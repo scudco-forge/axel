@@ -343,6 +343,17 @@ impl Harness {
         })
     }
 
+    /// The `app` its CLI names in the OSC 7501 program status it reports by
+    /// itself, for a harness that has no other way to tell Axel what it is
+    /// doing (no hooks, no notify): a pane session of it follows those
+    /// records.  Oh My Pi reports `app=omp`.
+    pub fn status_app(&self) -> Option<&'static str> {
+        match self {
+            Harness::Omp => Some("omp"),
+            _ => None,
+        }
+    }
+
     /// How to install it, in one line.
     pub fn install(&self) -> &str {
         match self {

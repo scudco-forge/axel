@@ -33,8 +33,9 @@ You can run the same server for any MCP client with `axel mcp`.
 
 ## Status
 
-Managed sessions report working and idle by themselves. For the rest, agents (or your own
-scripts) report one line you see on the dashboard:
+Managed sessions report working and idle by themselves, and so does Oh My Pi in a pane: Axel
+follows the status it reports to Rex. For the rest, agents (or your own scripts) report one
+line you see on the dashboard:
 
 ```bash
 axel status working "migrating the auth tests"
@@ -43,4 +44,5 @@ axel status done "PR ready: auth refresh fix"
 ```
 
 Status from every harness flows the same way, through Claude Code hooks, Codex notify, ACP,
-or `axel status`, and is mirrored to Rex, so Rex's tab indicators agree with Axel.
+the harness's own `OSC 7501` (Oh My Pi), or `axel status`, and is mirrored to Rex, so Rex's
+tab indicators agree with Axel.
