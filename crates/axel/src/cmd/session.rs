@@ -1,4 +1,5 @@
-//! `axel session …` — hosting and controlling managed (ACP) sessions.
+//! `axel session …` — hosting and controlling managed (ACP) sessions, and
+//! watching the status of pane ones (`watch`, in [`super::status`]).
 
 use std::path::{Path, PathBuf};
 
@@ -13,6 +14,7 @@ use crate::paths;
 pub fn run(cmd: SessionCommand) -> Result<()> {
     match cmd {
         SessionCommand::Host { session } => host(&session),
+        SessionCommand::Watch { session } => super::status::watch(&session),
         SessionCommand::Stop { session } => {
             let ctx = Ctx::open()?;
             let s = ctx.store.get_session(&session)?.with_context(|| format!("no session {session}"))?;

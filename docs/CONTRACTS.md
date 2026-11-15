@@ -201,6 +201,9 @@ impl Harness {   // what a pane's CLI takes at launch, by capability
     pub fn pane_system_prompt_flag(&self) -> Option<&'static str>;          // claude, pi and omp: --append-system-prompt, carrying Axel's agent context
     pub fn pane_takes_prompt(&self) -> bool;                                // claude, codex, pi and omp: the first prompt is the CLI's last positional argument (not when resuming)
 }
+impl Harness {   // status, by capability (ADR 0003, 0007)
+    pub fn status_app(&self) -> Option<&'static str>;   // omp: the `app` of the OSC 7501 records its CLI reports by itself, its only status channel (no hooks); a pane session of it follows them (`axel session watch`). None = no such reports
+}
 pub struct Thread { pub id: String, pub title: String, pub intent: String, pub state: ThreadState, pub created_by: String, pub parent_thread_id: Option<String>, pub relationship: Option<Relationship>, pub created_at: i64, pub updated_at: i64, pub done_at: Option<i64> }
 pub struct ThreadWorkspace { pub kind: WorkspaceKind, pub branch: Option<String>, pub worktree_path: Option<PathBuf> }
 pub struct ThreadProject { pub thread_id: String, pub repo_key: Option<String>, pub path_hint: PathBuf, pub workspace: ThreadWorkspace, pub local_project_id: Option<String> /* resolved on this replica by repo_key or path */, pub added_at: i64 }

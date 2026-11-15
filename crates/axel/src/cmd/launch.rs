@@ -111,10 +111,16 @@ pub fn runtime_label(harness: &axel_store::Harness) -> String {
 /// outlives the command (often an agent's tool call) that started it.  Its
 /// terminal output goes to `~/.axel/logs/SESSION.host.log`.
 pub fn spawn_detached(spec: &cfg_launch::LaunchSpec, session_id: &str) -> Result<()> {
+    in_background(spec, &format!("{session_id}.host.log")).context("starting the session host")
+}
+
+/// Run `spec` in its own process group, so it outlives the command that
+/// started it, its terminal output going to `~/.axel/logs/LOG`.
+fn in_background(spec: &cfg_launch::LaunchSpec, log: &str) -> Result<()> {
     use std::os::unix::process::CommandExt;
     let dir = paths::home().join("logs");
     std::fs::create_dir_all(&dir)?;
-    let out = std::fs::File::create(dir.join(format!("{session_id}.host.log")))?;
+    let out = std::fs::File::create(dir.join(log))?;
     std::process::Command::new(&spec.program)
         .args(&spec.args)
         .envs(spec.env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
@@ -122,9 +128,22 @@ pub fn spawn_detached(spec: &cfg_launch::LaunchSpec, session_id: &str) -> Result
         .stdout(out.try_clone()?)
         .stderr(out)
         .process_group(0)
-        .spawn()
-        .context("starting the session host")?;
+        .spawn()?;
     Ok(())
+}
+
+/// The pane of a harness that reports its status only as OSC 7501
+/// ([`axel_store::Harness::status_app`]) gets `axel session watch` in the
+/// background, following those reports while the pane lives (its output in
+/// `~/.axel/logs/SESSION.watch.log`).  Without Rex there is nothing to follow.
+fn watch_program_status(ctx: &Ctx, harness: &axel_store::Harness, session_id: &str) {
+    if ctx.rex.is_none() || harness.status_app().is_none() {
+        return;
+    }
+    let spec = cfg_launch::LaunchSpec { program: axel_exe(), args: vec!["session".into(), "watch".into(), session_id.to_string()], env: vec![] };
+    if let Err(e) = in_background(&spec, &format!("{session_id}.watch.log")) {
+        eprintln!("axel: {harness} status won't be followed: {e:#}");
+    }
 }
 
 pub fn launch(ctx: &Ctx, req: LaunchRequest, opts: LaunchOptions) -> Result<Launched> {
@@ -400,6 +419,7 @@ pub fn launch(ctx: &Ctx, req: LaunchRequest, opts: LaunchOptions) -> Result<Laun
             &session.id,
             &StatusReport { state: StatusState::Working, kind: None, title: Some(thread.title.clone()), msg: Some("starting".into()), progress: None },
         )?;
+        watch_program_status(ctx, &agent.harness, &session.id);
         // cwd for the exec'd harness.
         spec.env.push(("AXEL_CWD".into(), work_dir.to_string_lossy().into_owned()));
         return Ok(Launched::Inline { spec, label, thread_id: thread.id, session_id: session.id });
@@ -427,6 +447,7 @@ pub fn launch(ctx: &Ctx, req: LaunchRequest, opts: LaunchOptions) -> Result<Laun
         &session.id,
         &StatusReport { state: StatusState::Working, kind: None, title: Some(thread.title.clone()), msg: Some("starting".into()), progress: None },
     )?;
+    watch_program_status(ctx, &agent.harness, &session.id);
     Ok(Launched::RexWindow { window_id: window.window_id, thread_id: thread.id, session_id: session.id })
 }
 

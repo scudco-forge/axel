@@ -220,6 +220,7 @@ $ axel                               # in any Rex terminal
 | Claude Code | `.claude/settings.json` hooks → `axel hook claude` | Hook reads the event JSON on stdin and `$AXEL_THREAD` from its *inherited environment*, so a workspace-wide settings file no longer misroutes events (the v1 bug). |
 | Codex | `notify` in config → `axel hook codex` | Same shape. |
 | Any ACP agent | `axel acp <target>` stdio relay (ported from v1) | Parses `session/request_permission`, `session/update` frames. |
+| Oh My Pi (pane) | its own **OSC 7501** reports (`app=omp`) → `axel session watch` | No hooks; see below. |
 | Anything else | `axel status working|blocked|done "msg"` | Plain CLI. |
 
 Every hook invocation does two things: appends a `status` or `permission_request`
@@ -234,6 +235,18 @@ title while it waits for you, then `done` with the head of the reply when the tu
 (`idle` if it was cancelled, `error` if it failed), and `clear` when the session ends.
 Each report replaces the record whole, so every one carries `app=axel` and the agent's
 name as `title`.
+
+A **pane** harness whose only channel is the OSC 7501 it reports by itself
+(`Harness::status_app`: Oh My Pi, as `app=omp`) is followed through Rex. The launcher
+starts `axel session watch SESSION` in the background with the pane. It listens to
+`rex events` and, when the pane's program status changes, reads the block's records
+(`program_status`) and takes the harness's own: its root record, else its most urgent
+one, never `app=axel`'s or another app's. That becomes the session's status, and its
+state follows as with `axel status` (`working` → running, `blocked` → blocked, `done`,
+`idle` and a `clear` → idle). Only a change of state is written. The watcher stops when
+the harness exits or the pane closes. The reconciler (`axel ui`, `axel thread ls`) reads
+the same records once, so a session whose watcher isn't running catches up. A paused
+session keeps its state.
 
 Replies (approve/deny, answer a question) are delivered through the protocol that asked:
 ACP gets a JSON-RPC response; Claude Code hooks get a hook response on stdout
