@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result, bail};
 use axel_identity::{Keypair, attest};
-use axel_store::{Agent, AgentColor, AgentPolicy, Effort, Harness, NewAgent, Reach, RuntimeMode, SpendLimit};
+use axel_store::{Agent, AgentColor, AgentPolicy, Effort, Harness, NewAgent, Reach, RuntimeMode, SessionRuntime, SpendLimit};
 
 use super::{Ctx, claude_profile::ClaudeProfile};
 use super::policy::reach_label;
@@ -11,7 +11,7 @@ use crate::cli::{AgentCommand, PolicyArgs, ReachArg};
 pub fn run(cmd: AgentCommand) -> Result<()> {
     let ctx = Ctx::open()?;
     match cmd {
-        AgentCommand::New { name, runs, harness, model, claude_config_dir, effort, skills, prompt, color, runtime_mode, host, policy } => {
+        AgentCommand::New { name, runs, harness, model, claude_config_dir, effort, skills, prompt, color, runtime_mode, runtime, host, policy } => {
             if super::policy::caller_agent().is_some() {
                 bail!("agents can't create agents; ask the owner to run this");
             }
@@ -31,16 +31,21 @@ pub fn run(cmd: AgentCommand) -> Result<()> {
             if effort.is_some() {
                 ctx.store.set_agent_effort(&agent.pubkey, effort)?;
             }
+            let runtime: Option<SessionRuntime> = runtime.and_then(Into::into);
+            if runtime.is_some() {
+                ctx.store.set_agent_runtime(&agent.pubkey, runtime)?;
+            }
             if let Some(profile) = profile {
                 profile.save(&agent.pubkey)?;
             }
             println!("{}  {}  {}", agent.name, runs_label(&agent.harness, agent.model.as_deref()), agent.pubkey);
             print_policy(&ctx, &p);
             print_effort(&agent.harness, effort);
+            print_runtime(runtime);
             print_host(&ctx, &agent.pubkey)?;
             Ok(())
         }
-        AgentCommand::Edit { name, runs, model, claude_config_dir, inherit_claude_config, effort, name_to, skills, prompt, color, runtime_mode, host, policy } => {
+        AgentCommand::Edit { name, runs, model, claude_config_dir, inherit_claude_config, effort, name_to, skills, prompt, color, runtime_mode, runtime, host, policy } => {
             if super::policy::caller_agent().is_some() {
                 bail!("agents can't edit agents; ask the owner to run this");
             }
@@ -80,6 +85,9 @@ pub fn run(cmd: AgentCommand) -> Result<()> {
             if let Some(m) = runtime_mode {
                 ctx.store.set_agent_runtime_mode(&a.pubkey, m.into())?;
             }
+            if let Some(runtime) = runtime {
+                ctx.store.set_agent_runtime(&a.pubkey, runtime.into())?;
+            }
             if runs.is_some() || model.is_some() {
                 let (harness, model) = harness_change
                     .unwrap_or_else(|| (a.harness.clone(), model.filter(|m| m != "default")));
@@ -100,6 +108,7 @@ pub fn run(cmd: AgentCommand) -> Result<()> {
             println!("{}  {}  mode {}", a.name, runs_label(&a.harness, a.model.as_deref()), a.runtime_mode);
             print_policy(&ctx, &p);
             print_effort(&a.harness, a.effort);
+            print_runtime(a.runtime);
             print_host(&ctx, &a.pubkey)?;
             Ok(())
         }
@@ -113,13 +122,14 @@ pub fn run(cmd: AgentCommand) -> Result<()> {
                     let p = ctx.store.agent_policy(&a.pubkey)?;
                     let host = ctx.store.agent_host(&a.pubkey)?.map(|h| format!("@{}", h.label)).unwrap_or_default();
                     println!(
-                        "{:<16} {:<6} {:<9} {:<10} {:<6} {:<10} {:>3} unread  reach {:<18} {}",
+                        "{:<16} {:<6} {:<9} {:<10} {:<6} {:<10} {:<7} {:>3} unread  reach {:<18} {}",
                         a.name,
                         host,
                         a.harness,
                         a.model.as_deref().unwrap_or("-"),
                         a.effort.map_or("-", Effort::as_str),
                         a.runtime_mode,
+                        a.runtime.map_or("-", SessionRuntime::as_str),
                         unread,
                         reach_label(&ctx, &p.reach),
                         a.pubkey
@@ -139,6 +149,7 @@ pub fn run(cmd: AgentCommand) -> Result<()> {
             let p = ctx.store.agent_policy(&a.pubkey)?;
             print_policy(&ctx, &p);
             print_effort(&a.harness, a.effort);
+            print_runtime(a.runtime);
             print_host(&ctx, &a.pubkey)?;
             let spent = ctx.store.agent_spend_since(&a.pubkey, axel_store::local_day_start())?;
             println!("spent today: ${spent:.2} (estimated; managed sessions don't report usage yet)");
@@ -198,6 +209,7 @@ pub fn create(
         prompt,
         color,
         runtime_mode,
+        runtime: None,
         auth_tag: Some(tag.to_tag()),
     })?;
     Ok(agent)
@@ -307,6 +319,13 @@ fn print_effort(harness: &Harness, effort: Option<Effort>) {
         if let Some(warning) = super::effort::warning(harness, effort) {
             println!("  warning: {warning}");
         }
+    }
+}
+
+/// The runtime the agent's sessions start in, when it has one.
+fn print_runtime(runtime: Option<SessionRuntime>) {
+    if let Some(runtime) = runtime {
+        println!("  runtime {runtime} unless `--runtime` says otherwise");
     }
 }
 

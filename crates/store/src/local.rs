@@ -203,7 +203,7 @@ impl Store {
 // agents
 // ---------------------------------------------------------------------------
 
-const AGENT_COLS: &str = "pubkey, name, harness, model, effort, skills_json, prompt, color, runtime_mode, auth_tag_json, created_at, last_seen_at, archived_at";
+const AGENT_COLS: &str = "pubkey, name, harness, model, effort, skills_json, prompt, color, runtime_mode, runtime, auth_tag_json, created_at, last_seen_at, archived_at";
 
 fn row_agent(r: &Row<'_>) -> rusqlite::Result<Agent> {
     let skills_json: String = r.get("skills_json")?;
@@ -216,7 +216,7 @@ fn row_agent(r: &Row<'_>) -> rusqlite::Result<Agent> {
         name: r.get("name")?,
         harness: Harness::parse(&r.get::<_, String>("harness")?),
         model: r.get("model")?,
-        // Unknown text (an older or newer build's value) reads as "no effort" / "no colour" / the default mode.
+        // Unknown text (an older or newer build's value) reads as "no effort" / "no colour" / the default mode / no runtime.
         effort: r
             .get::<_, Option<String>>("effort")?
             .and_then(|e| e.parse().ok()),
@@ -229,6 +229,9 @@ fn row_agent(r: &Row<'_>) -> rusqlite::Result<Agent> {
             .get::<_, String>("runtime_mode")?
             .parse()
             .unwrap_or_default(),
+        runtime: r
+            .get::<_, Option<String>>("runtime")?
+            .and_then(|r| r.parse().ok()),
         auth_tag: auth_tag_json
             .map(|s| serde_json::from_str(&s))
             .transpose()
@@ -248,8 +251,8 @@ impl Store {
         let created_at = now();
         self.conn
             .execute(
-                "INSERT INTO agents (pubkey, name, harness, model, effort, skills_json, prompt, color, runtime_mode, auth_tag_json, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                "INSERT INTO agents (pubkey, name, harness, model, effort, skills_json, prompt, color, runtime_mode, runtime, auth_tag_json, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 params![
                     a.pubkey,
                     a.name,
@@ -260,6 +263,7 @@ impl Store {
                     a.prompt,
                     a.color.map(|c| c.as_str()),
                     a.runtime_mode.as_str(),
+                    a.runtime.map(|r| r.as_str()),
                     auth_tag_json,
                     created_at
                 ],
@@ -277,6 +281,7 @@ impl Store {
             prompt: a.prompt.clone(),
             color: a.color,
             runtime_mode: a.runtime_mode,
+            runtime: a.runtime,
             auth_tag: a.auth_tag.clone(),
             created_at,
             last_seen_at: None,
@@ -361,6 +366,19 @@ impl Store {
         let n = self.conn.execute(
             "UPDATE agents SET effort = ?2 WHERE pubkey = ?1",
             params![pk, effort.map(|e| e.as_str())],
+        )?;
+        if n == 0 {
+            return Err(Error::NotFound(format!("agent {pk}")));
+        }
+        Ok(())
+    }
+
+    /// Change the runtime an agent's sessions start in unless one is asked
+    /// for (`None`: Axel chooses); applies to sessions started afterwards.
+    pub fn set_agent_runtime(&self, pk: &str, runtime: Option<crate::SessionRuntime>) -> Result<(), Error> {
+        let n = self.conn.execute(
+            "UPDATE agents SET runtime = ?2 WHERE pubkey = ?1",
+            params![pk, runtime.map(|r| r.as_str())],
         )?;
         if n == 0 {
             return Err(Error::NotFound(format!("agent {pk}")));

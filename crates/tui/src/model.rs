@@ -21,6 +21,8 @@ pub struct AgentRow {
     pub model: Option<String>,
     pub color: Option<AgentColor>,
     pub runtime_mode: RuntimeMode,
+    /// The runtime its sessions start in; `None` lets Axel choose.
+    pub runtime: Option<axel_store::SessionRuntime>,
     pub last_seen_at: Option<i64>,
     pub unread: u64,
 }

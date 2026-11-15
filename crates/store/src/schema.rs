@@ -439,6 +439,12 @@ const MIGRATIONS: &[&str] = &[
     r#"
     -- agents.effort: see post_migrate.
     "#,
+    // v11: the runtime an agent's sessions start in unless one is asked for
+    // (`pane` or `managed`).  NULL (every agent already here) lets Axel
+    // choose.  Local-only.  The column is added by `post_migrate`.
+    r#"
+    -- agents.runtime: see post_migrate.
+    "#,
 ];
 
 /// The SQL of migration `version` (1-based), for tests that stage a database by hand.
@@ -516,6 +522,9 @@ fn post_migrate(tx: &Connection, version: i64) -> Result<(), Error> {
     }
     if version == 10 {
         add_column_if_missing(tx, "agents", "effort", "TEXT")?;
+    }
+    if version == 11 {
+        add_column_if_missing(tx, "agents", "runtime", "TEXT")?;
     }
     if version == 2 {
         add_column_if_missing(tx, "sessions", "runtime", "TEXT NOT NULL DEFAULT 'pane'")?;

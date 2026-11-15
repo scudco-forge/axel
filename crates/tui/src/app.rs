@@ -365,10 +365,10 @@ impl<'a> App<'a> {
         }
     }
 
-    /// Fill the launcher's "runtime: …" line from the chosen agent's harness.
+    /// Fill the launcher's "runtime: …" line from the chosen agent.
     fn sync_runtime_label(&mut self) {
         if self.launcher.step == crate::launcher::Step::Summary {
-            let label = self.launcher.chosen_agent_row().map(|a| (self.deps.runtime_label)(&a.harness));
+            let label = self.launcher.chosen_agent_row().map(|a| (self.deps.runtime_label)(a));
             self.launcher.runtime_label = label;
         } else {
             self.launcher.runtime_label = None;

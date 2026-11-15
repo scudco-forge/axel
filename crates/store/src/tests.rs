@@ -25,6 +25,7 @@ fn agent_spec(name: &str, kp: &Keypair, owner: Option<&Keypair>) -> NewAgent {
         prompt: None,
         color: Some(AgentColor::Gray),
         runtime_mode: RuntimeMode::default(),
+        runtime: None,
         auth_tag: owner.map(|o| attest(o, &kp.public(), "").unwrap().to_tag()),
     }
 }
@@ -2819,6 +2820,7 @@ fn a_database_from_before_effort_upgrades_with_its_agents_at_the_harness_default
             prompt: Some("be brief".into()),
             color: Some(AgentColor::Blue),
             runtime_mode: RuntimeMode::Edits,
+            runtime: None,
             auth_tag: Some(vec!["auth".into(), "o".into(), "".into(), "s".into()]),
             created_at: 1_700_000_000,
             last_seen_at: Some(1_700_000_500),
@@ -2848,6 +2850,91 @@ fn a_database_that_already_has_the_effort_column_migrates_cleanly() {
     assert_eq!(schema::current_version(&conn).unwrap(), SCHEMA_VERSION);
     let s = Store::from_connection(conn);
     assert_eq!(s.agent_by_name("nova").unwrap().unwrap().effort, Some(Effort::Max));
+}
+
+// --- default session runtime -----------------------------------------------------
+
+#[test]
+fn an_agents_runtime_is_kept_on_its_record_and_none_lets_axel_choose() {
+    let s = store();
+    let owner = Keypair::generate();
+    let (atlas, nova) = (Keypair::generate(), Keypair::generate());
+
+    // Without one, as every agent was before the column existed.
+    let plain = s.insert_agent(&agent_spec("atlas", &atlas, Some(&owner))).unwrap();
+    assert_eq!(plain.runtime, None);
+    assert_eq!(s.agent_by_name("atlas").unwrap().unwrap().runtime, None);
+
+    // With one, from creation.
+    let mut spec = agent_spec("nova", &nova, Some(&owner));
+    spec.runtime = Some(SessionRuntime::Pane);
+    assert_eq!(s.insert_agent(&spec).unwrap().runtime, Some(SessionRuntime::Pane));
+    assert_eq!(s.agent_by_pubkey(&pk(&nova)).unwrap().unwrap().runtime, Some(SessionRuntime::Pane));
+    let listed: Vec<(String, Option<SessionRuntime>)> = s.list_agents().unwrap().into_iter().map(|a| (a.name, a.runtime)).collect();
+    assert!(listed.contains(&("nova".into(), Some(SessionRuntime::Pane))) && listed.contains(&("atlas".into(), None)), "{listed:?}");
+
+    // Set, changed and cleared afterwards; the rest of the record stays.
+    s.set_agent_runtime(&pk(&atlas), Some(SessionRuntime::Managed)).unwrap();
+    let a = s.agent_by_name("atlas").unwrap().unwrap();
+    assert_eq!(a.runtime, Some(SessionRuntime::Managed));
+    assert_eq!(Agent { runtime: None, ..a }, plain, "only the runtime changed");
+    s.set_agent_runtime(&pk(&atlas), Some(SessionRuntime::Pane)).unwrap();
+    assert_eq!(s.agent_by_name("atlas").unwrap().unwrap().runtime, Some(SessionRuntime::Pane));
+    s.set_agent_runtime(&pk(&atlas), None).unwrap();
+    assert_eq!(s.agent_by_name("atlas").unwrap().unwrap(), plain);
+    // A rename, a new harness or a new effort leaves it alone.
+    s.rename_agent(&pk(&nova), "vega").unwrap();
+    s.set_agent_harness(&pk(&nova), &Harness::Custom("omp".into()), None).unwrap();
+    s.set_agent_effort(&pk(&nova), Some(Effort::High)).unwrap();
+    assert_eq!(s.agent_by_name("vega").unwrap().unwrap().runtime, Some(SessionRuntime::Pane));
+
+    assert!(matches!(s.set_agent_runtime("nobody", Some(SessionRuntime::Pane)), Err(Error::NotFound(_))));
+}
+
+/// The schema the last release without an agent runtime produced.
+const SCHEMA_BEFORE_AGENT_RUNTIME: i64 = 10;
+
+#[test]
+fn a_database_from_before_the_agent_runtime_upgrades_with_its_agents_left_to_axel() {
+    let mut conn = Connection::open_in_memory().unwrap();
+    schema::migrate_to(&mut conn, SCHEMA_BEFORE_AGENT_RUNTIME).unwrap();
+    assert!(conn.execute("SELECT runtime FROM agents", []).is_err(), "no runtime column yet");
+    conn.execute(
+        "INSERT INTO agents (pubkey, name, harness, model, effort, skills_json, runtime_mode, created_at)
+         VALUES ('pk-atlas', 'atlas', 'codex', 'gpt-5.5', 'high', '[\"*\"]', 'edits', 1700000000)",
+        [],
+    )
+    .unwrap();
+
+    schema::migrate(&mut conn).unwrap();
+    schema::migrate(&mut conn).unwrap();
+    assert_eq!(schema::current_version(&conn).unwrap(), SCHEMA_VERSION);
+
+    let s = Store::from_connection(conn);
+    let a = s.agent_by_name("atlas").unwrap().unwrap();
+    assert_eq!((a.runtime, a.effort, a.runtime_mode), (None, Some(Effort::High), RuntimeMode::Edits), "the row is as it was, with no runtime");
+    s.set_agent_runtime("pk-atlas", Some(SessionRuntime::Pane)).unwrap();
+    assert_eq!(s.agent_by_name("atlas").unwrap().unwrap().runtime, Some(SessionRuntime::Pane));
+
+    // A runtime this build does not know (a newer build's) reads as none, not as an error.
+    s.connection().execute("UPDATE agents SET runtime = 'hologram'", []).unwrap();
+    assert_eq!(s.agent_by_name("atlas").unwrap().unwrap().runtime, None);
+    assert_eq!(s.list_agents().unwrap().len(), 1);
+}
+
+#[test]
+fn a_database_that_already_has_the_agent_runtime_column_migrates_cleanly() {
+    let mut conn = Connection::open_in_memory().unwrap();
+    schema::migrate_to(&mut conn, SCHEMA_BEFORE_AGENT_RUNTIME).unwrap();
+    conn.execute_batch(
+        "ALTER TABLE agents ADD COLUMN runtime TEXT;
+         INSERT INTO agents (pubkey, name, harness, runtime, created_at) VALUES ('pk-nova', 'nova', 'claude', 'pane', 1700000000);",
+    )
+    .unwrap();
+    schema::migrate(&mut conn).unwrap();
+    assert_eq!(schema::current_version(&conn).unwrap(), SCHEMA_VERSION);
+    let s = Store::from_connection(conn);
+    assert_eq!(s.agent_by_name("nova").unwrap().unwrap().runtime, Some(SessionRuntime::Pane));
 }
 
 #[test]

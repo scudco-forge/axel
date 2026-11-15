@@ -837,6 +837,7 @@ fn each_turn_starts_with_what_the_agent_missed_and_notes_wait_for_it() {
             prompt: None,
             color: None,
             runtime_mode: RuntimeMode::default(),
+            runtime: None,
             auth_tag: None,
         })
         .unwrap();

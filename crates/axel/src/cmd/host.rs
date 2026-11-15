@@ -238,6 +238,7 @@ impl JobAgent {
                 prompt: self.prompt.clone(),
                 color: self.color,
                 runtime_mode: mode,
+                runtime: None,
                 auth_tag: self.auth_tag.clone(),
             })?;
         }

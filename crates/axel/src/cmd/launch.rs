@@ -81,9 +81,14 @@ pub fn normalize_repo_url(url: &str) -> String {
     u
 }
 
-/// Pick the runtime: managed when the harness has an ACP adapter on PATH.
-pub fn pick_runtime(harness: &axel_store::Harness, wanted: Option<SessionRuntime>) -> SessionRuntime {
-    if let Some(r) = wanted {
+/// Pick the runtime: the one asked for (`--runtime`), else the agent's
+/// default, else managed when the harness has an ACP adapter on PATH.
+pub fn pick_runtime(
+    harness: &axel_store::Harness,
+    wanted: Option<SessionRuntime>,
+    agent_default: Option<SessionRuntime>,
+) -> SessionRuntime {
+    if let Some(r) = wanted.or(agent_default) {
         return r;
     }
     let cmd = axel_acp::adapter_command(harness);
@@ -97,8 +102,12 @@ pub fn pick_runtime(harness: &axel_store::Harness, wanted: Option<SessionRuntime
     }
 }
 
-/// Human description of what `pick_runtime` would choose, for the launcher summary.
-pub fn runtime_label(harness: &axel_store::Harness) -> String {
+/// Human description of what `pick_runtime` would choose when no runtime is
+/// asked for, for the launcher summary.
+pub fn runtime_label(harness: &axel_store::Harness, agent_default: Option<SessionRuntime>) -> String {
+    if let Some(r) = agent_default {
+        return format!("{r} (the agent's default)");
+    }
     let cmd = axel_acp::adapter_command(harness);
     match cmd.first() {
         Some(program) if which(program).is_some() => format!("managed ({program})"),
@@ -250,7 +259,7 @@ pub fn launch(ctx: &Ctx, req: LaunchRequest, opts: LaunchOptions) -> Result<Laun
     }
 
     // 5. Session, signed by the agent itself.
-    let runtime = pick_runtime(&agent.harness, opts.runtime);
+    let runtime = pick_runtime(&agent.harness, opts.runtime, agent.runtime);
     let session = ctx.store.start_session(
         &agent_kp,
         &NewSession {
@@ -970,5 +979,24 @@ mod tests {
         assert_eq!(a, "github.com/lgalabru/axel");
         assert_eq!(a, b);
         assert_eq!(a, c);
+    }
+
+    #[test]
+    fn the_runtime_asked_for_beats_the_agents_default_which_beats_the_automatic_choice() {
+        use axel_store::{Harness, SessionRuntime::{Managed, Pane}};
+        use super::{pick_runtime, runtime_label};
+        // An ACP command that is on no PATH: left to itself, Axel picks the pane.
+        let h = Harness::Custom("axel-test-no-such-acp-adapter".into());
+        assert_eq!(pick_runtime(&h, None, None), Pane, "no adapter, no default: the automatic choice");
+        assert_eq!(pick_runtime(&h, None, Some(Managed)), Managed, "the agent's default beats the automatic choice");
+        assert_eq!(pick_runtime(&h, Some(Pane), Some(Managed)), Pane, "--runtime beats the agent's default");
+        // Whatever Axel would pick for Claude, the agent's default and `--runtime` decide.
+        assert_eq!(pick_runtime(&Harness::Claude, None, Some(Pane)), Pane, "an agent can default to the pane");
+        assert_eq!(pick_runtime(&Harness::Claude, Some(Managed), Some(Pane)), Managed);
+
+        // The launcher says which one it is going to be, and why.
+        assert_eq!(runtime_label(&h, None), "pane (axel-test-no-such-acp-adapter not found on PATH)");
+        assert_eq!(runtime_label(&h, Some(Managed)), "managed (the agent's default)");
+        assert_eq!(runtime_label(&Harness::Claude, Some(Pane)), "pane (the agent's default)");
     }
 }

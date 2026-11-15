@@ -172,6 +172,7 @@ impl Store {
     pub fn touch_agent(&self, pk: &str) -> Result<(), Error>; pub fn rename_agent(&self, pk: &str, name: &str) -> Result<(), Error>;   // key, policy, history stay; running sessions keep the old name
     pub fn touch_agent(&self, pk: &str) -> Result<(), Error>; pub fn set_agent_profile(&self, pk: &str, skills: Option<&[String]>, prompt: Option<&str>, color: Option<AgentColor>) -> Result<(), Error>;   // each Some replaces; "" clears the prompt
     pub fn set_agent_effort(&self, pk: &str, effort: Option<Effort>) -> Result<(), Error>;   // None: the harness's own default; sessions started afterwards see it
+    pub fn set_agent_runtime(&self, pk: &str, runtime: Option<SessionRuntime>) -> Result<(), Error>;   // None: Axel chooses; sessions started afterwards see it
     pub fn known_identity_name(&self, pubkey: &str) -> Result<Option<String>, Error>;   // agent name, or participant display if known
 }
 
@@ -219,8 +220,8 @@ pub struct UsageSample { pub session_id: String, pub at: i64, pub input_tokens: 
 pub struct ThreadSummary { pub thread: Thread, pub projects: Vec<ThreadProject>, pub participants: Vec<Participant>, pub sessions_total: i64, pub sessions_live: Vec<Session> /* non-ended */, pub agents: Vec<String>, pub environments: Vec<String /*labels*/>, pub usage: Usage, pub live: Option<Status> /* most urgent: blocked > error > working > done > idle */ }
 #[derive(Default)] pub struct ThreadFilter { pub states: Option<Vec<ThreadState>>, pub agent_pubkey: Option<String>, pub participant: Option<String>, pub repo_key: Option<String>, pub limit: Option<usize> }
 #[derive(Default)] pub struct SessionFilter { pub thread_id: Option<String>, pub agent_pubkey: Option<String>, pub environment_id: Option<String>, pub states: Option<Vec<SessionState>>, pub limit: Option<usize> }
-pub struct Agent { pub pubkey: String, pub name: String, pub harness: Harness, pub model: Option<String>, pub effort: Option<Effort>, pub skills: Vec<String>, pub prompt: Option<String>, pub color: Option<AgentColor>, pub runtime_mode: RuntimeMode, pub auth_tag: Option<Vec<String>>, pub created_at: i64, pub last_seen_at: Option<i64>, pub archived_at: Option<i64> }
-#[derive(Default)] pub struct NewAgent { pub pubkey: String, pub name: String, pub harness: Harness, pub model: Option<String>, pub effort: Option<Effort>, pub skills: Vec<String>, pub prompt: Option<String>, pub color: Option<AgentColor>, pub runtime_mode: RuntimeMode, pub auth_tag: Option<Vec<String>> }
+pub struct Agent { pub pubkey: String, pub name: String, pub harness: Harness, pub model: Option<String>, pub effort: Option<Effort>, pub skills: Vec<String>, pub prompt: Option<String>, pub color: Option<AgentColor>, pub runtime_mode: RuntimeMode, pub runtime: Option<SessionRuntime>, pub auth_tag: Option<Vec<String>>, pub created_at: i64, pub last_seen_at: Option<i64>, pub archived_at: Option<i64> }
+#[derive(Default)] pub struct NewAgent { pub pubkey: String, pub name: String, pub harness: Harness, pub model: Option<String>, pub effort: Option<Effort>, pub skills: Vec<String>, pub prompt: Option<String>, pub color: Option<AgentColor>, pub runtime_mode: RuntimeMode, pub runtime: Option<SessionRuntime>, pub auth_tag: Option<Vec<String>> }
 // Environment and Project(+repo_key) unchanged.
 ```
 
@@ -238,6 +239,12 @@ the job's agent profile (`JobAgent.effort`), and starting a job sets the agent's
 what the job carries (`None` clears it), even when the host already knows the agent (a host that
 predates the field ignores it, and a job without it, or with anything there that is not a level
 the host knows, reads as no effort).
+
+An agent's default runtime (`pane` or `managed`) is on its record too: the nullable
+`agents.runtime` column (schema v11; NULL, or text this build does not know, lets Axel choose).
+A session runs in the runtime asked for (`LaunchOptions::runtime`, from `--runtime`), else the
+agent's, else managed when the harness's ACP adapter is on PATH and pane otherwise. It is in no
+envelope and no job: a remote job always asks for managed.
 
 Authorization in `append`: kind 100 → always (signer becomes owner). Other thread kinds → signer is a participant of `t`, or an agent whose `agents.auth_tag` owner is a participant, or (kinds 20/21/110–112) signer is one of this replica's own agents. Non-thread kinds (notes etc. without `t`) → always. Rejected envelopes are kept with `rejected_reason` and re-tried by `rebuild_projections`.
 
