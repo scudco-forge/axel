@@ -442,6 +442,11 @@ pub enum ThreadCommand {
 pub enum SessionCommand {
     /// Host a managed (ACP) session: runs in its own pane and prints the raw log.
     Host { session: String },
+    /// Follow the OSC 7501 program status a pane session's harness reports by
+    /// itself into the session's status, while its pane lives (the launcher
+    /// starts it for harnesses with no hooks).
+    #[command(hide = true)]
+    Watch { session: String },
     /// End a session (and close its pane).
     Stop { session: String },
     /// Move a running Claude session to a host, or back (`--to local`): it

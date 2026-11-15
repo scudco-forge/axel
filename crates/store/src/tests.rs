@@ -2968,3 +2968,12 @@ fn each_harness_says_how_its_pane_takes_a_reasoning_effort() {
     assert!("ultra".parse::<Effort>().is_err());
     assert_eq!(Effort::ALL.iter().map(|e| e.to_string()).collect::<Vec<_>>(), ["low", "medium", "high", "xhigh", "max"]);
 }
+
+#[test]
+fn only_harnesses_without_hooks_follow_their_own_program_status() {
+    assert_eq!(Harness::Omp.status_app(), Some("omp"));
+    // Claude and Codex report through hooks; the rest report nothing by themselves.
+    for h in Harness::BUILTIN.into_iter().filter(|h| *h != Harness::Omp).chain([Harness::Custom("omp --model x".into())]) {
+        assert_eq!(h.status_app(), None, "{h}");
+    }
+}

@@ -120,10 +120,16 @@ pub fn runtime_label(harness: &axel_store::Harness, agent_default: Option<Sessio
 /// outlives the command (often an agent's tool call) that started it.  Its
 /// terminal output goes to `~/.axel/logs/SESSION.host.log`.
 pub fn spawn_detached(spec: &cfg_launch::LaunchSpec, session_id: &str) -> Result<()> {
+    in_background(spec, &format!("{session_id}.host.log")).context("starting the session host")
+}
+
+/// Run `spec` in its own process group, so it outlives the command that
+/// started it, its terminal output going to `~/.axel/logs/LOG`.
+fn in_background(spec: &cfg_launch::LaunchSpec, log: &str) -> Result<()> {
     use std::os::unix::process::CommandExt;
     let dir = paths::home().join("logs");
     std::fs::create_dir_all(&dir)?;
-    let out = std::fs::File::create(dir.join(format!("{session_id}.host.log")))?;
+    let out = std::fs::File::create(dir.join(log))?;
     std::process::Command::new(&spec.program)
         .args(&spec.args)
         .envs(spec.env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
@@ -131,9 +137,22 @@ pub fn spawn_detached(spec: &cfg_launch::LaunchSpec, session_id: &str) -> Result
         .stdout(out.try_clone()?)
         .stderr(out)
         .process_group(0)
-        .spawn()
-        .context("starting the session host")?;
+        .spawn()?;
     Ok(())
+}
+
+/// The pane of a harness that reports its status only as OSC 7501
+/// ([`axel_store::Harness::status_app`]) gets `axel session watch` in the
+/// background, following those reports while the pane lives (its output in
+/// `~/.axel/logs/SESSION.watch.log`).  Without Rex there is nothing to follow.
+fn watch_program_status(ctx: &Ctx, harness: &axel_store::Harness, session_id: &str) {
+    if ctx.rex.is_none() || harness.status_app().is_none() {
+        return;
+    }
+    let spec = cfg_launch::LaunchSpec { program: axel_exe(), args: vec!["session".into(), "watch".into(), session_id.to_string()], env: vec![] };
+    if let Err(e) = in_background(&spec, &format!("{session_id}.watch.log")) {
+        eprintln!("axel: {harness} status won't be followed: {e:#}");
+    }
 }
 
 pub fn launch(ctx: &Ctx, req: LaunchRequest, opts: LaunchOptions) -> Result<Launched> {
@@ -300,6 +319,12 @@ pub fn launch(ctx: &Ctx, req: LaunchRequest, opts: LaunchOptions) -> Result<Laun
         args.append(&mut spec.args);
         spec.args = args;
     }
+    if runtime == SessionRuntime::Pane && profile.harness.kind == HarnessKind::Custom {
+        // A builtin harness the launch profile has no kind for (Pi, Oh My Pi)
+        // still gets the agent context and its first prompt, by capability.
+        let prompt = resume.is_none().then_some(prompt.as_str());
+        pane_context(&mut spec, &agent.harness, || system_prompt(&agent, &work_dir), prompt);
+    }
     spec.env.push(("AXEL_THREAD".into(), thread.id.clone()));
     spec.env.push(("AXEL_SESSION".into(), session.id.clone()));
     spec.env.push(("AXEL_AGENT".into(), agent.pubkey.clone()));
@@ -403,6 +428,7 @@ pub fn launch(ctx: &Ctx, req: LaunchRequest, opts: LaunchOptions) -> Result<Laun
             &session.id,
             &StatusReport { state: StatusState::Working, kind: None, title: Some(thread.title.clone()), msg: Some("starting".into()), progress: None },
         )?;
+        watch_program_status(ctx, &agent.harness, &session.id);
         // cwd for the exec'd harness.
         spec.env.push(("AXEL_CWD".into(), work_dir.to_string_lossy().into_owned()));
         return Ok(Launched::Inline { spec, label, thread_id: thread.id, session_id: session.id });
@@ -430,6 +456,7 @@ pub fn launch(ctx: &Ctx, req: LaunchRequest, opts: LaunchOptions) -> Result<Laun
         &session.id,
         &StatusReport { state: StatusState::Working, kind: None, title: Some(thread.title.clone()), msg: Some("starting".into()), progress: None },
     )?;
+    watch_program_status(ctx, &agent.harness, &session.id);
     Ok(Launched::RexWindow { window_id: window.window_id, thread_id: thread.id, session_id: session.id })
 }
 
@@ -658,6 +685,21 @@ pub fn system_prompt(agent: &axel_store::Agent, dir: &Path) -> String {
         s.push_str(&body);
     }
     s
+}
+
+/// Axel's agent context and the first prompt for a pane whose CLI takes them
+/// ([`axel_store::Harness::pane_system_prompt_flag`],
+/// [`axel_store::Harness::pane_takes_prompt`]): the context flag ahead of the
+/// other arguments, the prompt last. `prompt` is `None` when resuming.
+fn pane_context(spec: &mut cfg_launch::LaunchSpec, harness: &axel_store::Harness, context: impl FnOnce() -> String, prompt: Option<&str>) {
+    if let Some(flag) = harness.pane_system_prompt_flag() {
+        let mut args = vec![flag.to_string(), context()];
+        args.append(&mut spec.args);
+        spec.args = args;
+    }
+    if let Some(prompt) = prompt.filter(|p| harness.pane_takes_prompt() && !p.trim().is_empty()) {
+        spec.args.push(prompt.to_string());
+    }
 }
 
 /// Autopilot and friends: harness-specific permission flags, inserted before the
@@ -900,6 +942,33 @@ mod tests {
         std::os::unix::fs::symlink("AXEL.md", dir.path().join("CLAUDE.md")).unwrap();
         assert_eq!(super::unlinked_context(&Harness::Claude, dir.path()), None, "claude reads it through CLAUDE.md");
         assert!(super::unlinked_context(&Harness::Cursor, dir.path()).is_some());
+    }
+
+    #[test]
+    fn an_omp_or_pi_pane_gets_the_agent_context_and_its_first_prompt_last() {
+        use axel_config::launch::LaunchSpec;
+        use axel_store::{Effort, Harness};
+        let launched = |harness: Harness, prompt: Option<&str>| {
+            let mut spec = LaunchSpec { program: harness.program().into(), args: vec!["--model".into(), "m".into()], env: vec![] };
+            super::pane_context(&mut spec, &harness, || "you are ferro".into(), prompt);
+            super::super::effort::pane(&harness, &mut spec, Some(Effort::High), |w| panic!("{w}"));
+            spec.args
+        };
+        for harness in [Harness::Omp, Harness::Pi] {
+            assert_eq!(
+                launched(harness.clone(), Some("fix it")),
+                ["--thinking", "high", "--append-system-prompt", "you are ferro", "--model", "m", "fix it"],
+                "{harness}"
+            );
+            assert_eq!(launched(harness.clone(), None), ["--thinking", "high", "--append-system-prompt", "you are ferro", "--model", "m"], "{harness}: resuming");
+        }
+        // A pane with no such flags runs as it was.
+        let mut spec = LaunchSpec { program: "maki".into(), args: vec!["acp".into()], env: vec![] };
+        super::pane_context(&mut spec, &Harness::Custom("maki acp".into()), || unreachable!(), Some("fix it"));
+        assert_eq!(spec.args, ["acp"]);
+        let mut spec = LaunchSpec { program: "goose".into(), args: vec![], env: vec![] };
+        super::pane_context(&mut spec, &Harness::Goose, || unreachable!(), Some("fix it"));
+        assert!(spec.args.is_empty());
     }
 
     #[test]

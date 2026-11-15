@@ -1,9 +1,12 @@
 //! Reconcile projections with reality: a live session whose Rex pane no longer
-//! exists is ended. Cheap (one `session.view`), called when the UI opens and
-//! when threads are listed.
+//! exists is ended, and a pane session whose harness reports its status only
+//! as OSC 7501 takes the state its pane's records say now (what
+//! `axel session watch` would have followed, had it run). Cheap (one
+//! `session.view`, one `program_status` per such session), called when the UI
+//! opens and when threads are listed.
 
 use anyhow::Result;
-use axel_store::{SessionFilter, SessionState};
+use axel_store::{SessionFilter, SessionRuntime, SessionState};
 
 use super::Ctx;
 
@@ -36,9 +39,16 @@ pub fn run(ctx: &Ctx) -> Result<usize> {
     let owner = ctx.owner()?;
     let mut ended = 0;
     for s in ours {
-        if !blocks.contains(s.rex_block_id.as_deref().unwrap_or("")) {
+        let block = s.rex_block_id.as_deref().unwrap_or("");
+        if !blocks.contains(block) {
             ctx.store.end_session(&owner, &s.id, Some("pane closed"))?;
             ended += 1;
+        } else if s.runtime == SessionRuntime::Pane
+            && s.harness.status_app().is_some()
+            && let Ok(signer) = ctx.agent_signer(&s.agent_pubkey, Some(&s.thread_id))
+            && let Ok(records) = rex.program_status(block)
+        {
+            super::status::follow(&ctx.store, &signer, &s, &records, false)?;
         }
     }
     Ok(ended)
