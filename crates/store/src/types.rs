@@ -352,10 +352,22 @@ impl Harness {
         }
     }
 
-    /// Whether a pane's CLI starts on a prompt given as its last positional
-    /// argument (`pi "fix it"`, `omp "fix it"`).
-    pub fn pane_takes_prompt(&self) -> bool {
-        matches!(self, Harness::Claude | Harness::Codex | Harness::Pi | Harness::Omp)
+    /// The arguments that end a pane CLI's argv with `prompt` as its first
+    /// message, read as text rather than as a flag or an `@file`. `None`: this
+    /// pane takes no prompt. Prompts starting with neither `-` nor `@` go as is.
+    pub fn pane_prompt_args(&self, prompt: &str) -> Option<Vec<String>> {
+        Some(match self {
+            Harness::Claude | Harness::Codex => vec![prompt.into()],
+            // Oh My Pi takes everything after `--` as message text.
+            Harness::Omp if prompt.starts_with(['-', '@']) => vec!["--".into(), prompt.into()],
+            Harness::Pi if prompt.starts_with('-') => vec!["--".into(), prompt.into()],
+            // Pi attaches any argument starting with `@` as a file, even after
+            // `--`, and has no other way to give one as text: a leading space
+            // keeps it a message.
+            Harness::Pi if prompt.starts_with('@') => vec![format!(" {prompt}")],
+            Harness::Pi | Harness::Omp => vec![prompt.into()],
+            _ => return None,
+        })
     }
 
     /// The `app` its CLI names in the OSC 7501 program status it reports by
