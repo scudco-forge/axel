@@ -200,6 +200,7 @@ mod tests {
                 prompt: None,
                 color: None,
                 runtime_mode: RuntimeMode::default(),
+                runtime: None,
                 auth_tag: Some(attest(&owner, &key.public(), "").unwrap().to_tag()),
             })
             .unwrap();
