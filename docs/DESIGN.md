@@ -243,10 +243,12 @@ starts `axel session watch SESSION` in the background with the pane. It listens 
 (`program_status`) and takes the harness's own: its root record, else its most urgent
 one, never `app=axel`'s or another app's. That becomes the session's status, and its
 state follows as with `axel status` (`working` → running, `blocked` → blocked, `done`,
-`idle` and a `clear` → idle). Only a change of state is written. The watcher stops when
-the harness exits or the pane closes. The reconciler (`axel ui`, `axel thread ls`) reads
-the same records once, so a session whose watcher isn't running catches up. A paused
-session keeps its state.
+`idle` and a `clear` → idle). Only a change of state is written. It reads the records
+once on start and again on the stream's first line, whatever it is: spawning `rex events`
+doesn't mean it is subscribed, and a change in between has no event of its own. The
+watcher stops when the harness exits or the pane closes. The reconciler (`axel ui`,
+`axel thread ls`) reads the same records once, so a session whose watcher isn't running
+catches up. A paused session keeps its state.
 
 Replies (approve/deny, answer a question) are delivered through the protocol that asked:
 ACP gets a JSON-RPC response; Claude Code hooks get a hook response on stdout

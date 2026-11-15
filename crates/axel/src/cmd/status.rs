@@ -141,6 +141,36 @@ fn block_event(line: &str, block: &str) -> Option<BlockEvent> {
     }
 }
 
+/// Drive `sync` (read the block's records and [`follow`] them; `false` once
+/// the session is gone or ended) from `lines`, a `rex events --json` stream
+/// spawned before this is called, until the block is gone.
+///
+/// Spawning `rex events` doesn't mean it is subscribed yet: a change the
+/// harness reports between the first read and the subscription has no event,
+/// and the final `done` may never be followed by another one.  Any line at all
+/// (the stream's own `client_connected` comes first) proves the subscription
+/// is live, so the first line, whatever it is, reads the records again.  The
+/// first read stays up front so a stream that never speaks still catches up.
+fn follow_stream(lines: impl IntoIterator<Item = String>, block: &str, mut sync: impl FnMut(bool) -> Result<bool>) -> Result<()> {
+    if !sync(false)? {
+        return Ok(());
+    }
+    let mut live = false;
+    for line in lines {
+        let cleared = match block_event(&line, block) {
+            Some(BlockEvent::Gone) => break,
+            Some(BlockEvent::Status { removed }) => removed,
+            None if live => continue,
+            None => false,
+        };
+        live = true;
+        if !sync(cleared)? {
+            break;
+        }
+    }
+    Ok(())
+}
+
 /// `axel session watch SESSION`: [`follow`] a pane session's harness for as
 /// long as its pane lives.  The launcher starts it in the background for a
 /// harness with a [`axel_store::Harness::status_app`]; it listens to
@@ -156,26 +186,20 @@ pub fn watch(session_id: &str) -> Result<()> {
     // Listen first, then catch up on what the harness reported before.
     let mut events = rex.events_command().spawn().context("starting rex events")?;
     let stdout = events.stdout.take().context("rex events has no output")?;
-    let sync = |session: &Session, cleared: bool| match rex.program_status(&block) {
-        Ok(records) => follow(&ctx.store, &signer, session, &records, cleared).map(|_| ()),
-        Err(e) => {
-            eprintln!("axel: {e}");
-            Ok(())
+    let sync = |cleared: bool| -> Result<bool> {
+        let Some(session) = ctx.store.get_session(session_id)?.filter(|s| s.state != SessionState::Ended) else { return Ok(false) };
+        match rex.program_status(&block) {
+            Ok(records) => follow(&ctx.store, &signer, &session, &records, cleared).map(|_| true),
+            Err(e) => {
+                eprintln!("axel: {e}");
+                Ok(true)
+            }
         }
     };
-    sync(&session, false)?;
-    for line in std::io::BufReader::new(stdout).lines().map_while(Result::ok) {
-        let cleared = match block_event(&line, &block) {
-            Some(BlockEvent::Status { removed }) => removed,
-            Some(BlockEvent::Gone) => break,
-            None => continue,
-        };
-        let Some(session) = ctx.store.get_session(session_id)?.filter(|s| s.state != SessionState::Ended) else { break };
-        sync(&session, cleared)?;
-    }
+    let result = follow_stream(std::io::BufReader::new(stdout).lines().map_while(Result::ok), &block, sync);
     let _ = events.kill();
     let _ = events.wait();
-    Ok(())
+    result
 }
 
 #[cfg(test)]
@@ -321,5 +345,39 @@ mod tests {
         assert_eq!(block_event(&terminal("program_status_changed", "block:2"), block), None);
         assert_eq!(block_event(&terminal("title_changed", block), block), None);
         assert_eq!(block_event("not json", block), None);
+    }
+
+    #[test]
+    fn a_change_before_rex_events_is_subscribed_is_still_followed() {
+        let (_temp, ctx) = ctx();
+        let (key, session) = omp_pane(&ctx);
+        let block = "block:1";
+        let harness = std::cell::RefCell::new(json!({"records": [{"state": "working", "app": "omp"}]}));
+        let event = |ty: &str, payload: Value| json!({"type": "session_event", "payload": {"session_id": "session:1", "event": {"type": ty, "payload": payload}}}).to_string();
+        // The stream is asked for its first line only after the first read: the
+        // harness says `done` then, before the subscription is live, so no event
+        // reports it.  The stream opens with its own `client_connected`, then the
+        // pane closes; a status event after that is never acted on.
+        let mut first = Some(event("client_connected", json!({"client_id": "client:1"})));
+        let mut rest = vec![
+            event("block_event", json!({"block_id": block, "name": "program_status_changed", "payload": {}})),
+            event("block_closed", json!({"block_id": block})),
+        ];
+        let stream = std::iter::from_fn(|| {
+            if let Some(line) = first.take() {
+                *harness.borrow_mut() = json!({"records": [{"state": "done", "app": "omp"}]});
+                return Some(line);
+            }
+            rest.pop()
+        });
+        let mut reads = 0;
+        follow_stream(stream, block, |cleared| {
+            reads += 1;
+            follow(&ctx.store, &key, &session, &harness.borrow(), cleared)?;
+            Ok(true)
+        })
+        .unwrap();
+        assert_eq!(states(&ctx, &session), (StatusState::Done, SessionState::Idle));
+        assert_eq!(reads, 2, "the first read and one on the stream's first line; none after the pane closed");
     }
 }
