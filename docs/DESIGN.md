@@ -36,7 +36,7 @@ aren't decisions yet are in `rfd/`.
 |---|---|
 | **Environment** | A machine running Axel: its filesystem, credentials, DB. Identified by a stable `environment_id`, and by the Rex `host_id` when reachable through Rex. |
 | **Project** | A directory on an environment, usually a git root, optionally with an `AXEL.md`. Projects on different environments that share a `repo_key` (canonical remote URL) are the same repository. |
-| **Agent** | A named identity (Ed25519 keypair, owner attestation) plus a *profile*: harness, model, reasoning effort, skills, default prompt, colour. Reusable across threads. Has an inbox. |
+| **Agent** | A named identity (Ed25519 keypair, owner attestation) plus a *profile*: harness, model, reasoning effort, default runtime, skills, default prompt, colour. Reusable across threads. Has an inbox. |
 | **Harness** | The program that runs the agent: `claude`, `codex`, `opencode`, or a custom command. |
 | **Thread** | **The primitive.** An intent (the initial prompt) and everything done in its name: attached to 0..n projects, realized by many agent *sessions* over time, on one or many environments. States: `open → done → archived`. Live state is derived from its sessions. |
 | **Session** | One agent instance working on a thread: agent + environment + (optional) project + harness process. Owns the Rex block, the harness's own session id (for `--resume`), the transcript, status and token usage. States: `starting → running ⇄ blocked ⇄ idle → ended`. |
@@ -424,7 +424,7 @@ See *The thread model* above for `threads`, `thread_projects`, `sessions`, `stat
 ```sql
 environments(id PK, label, rex_host_id, is_local, created_at)
 agents(pubkey PK, name UNIQUE, harness, model, effort NULL, skills_json, prompt, color,
-       runtime_mode, auth_tag_json, created_at, last_seen_at, archived_at)
+       runtime_mode, runtime NULL, auth_tag_json, created_at, last_seen_at, archived_at)
 mentions(message_id, pubkey, PRIMARY KEY(message_id, pubkey))
 message_refs(message_id, ref_id)
 read_frontiers(pubkey, scope, through_created_at, through_id, PRIMARY KEY(pubkey, scope))
@@ -478,6 +478,12 @@ The `pane` runtime (the native CLI in a Rex pane) stays. The **managed** runtime
 makes the thread the place you work: Axel drives the harness over **ACP** (Agent Client
 Protocol, JSON-RPC over stdio) and owns the conversation. One protocol covers Claude,
 Codex, OpenCode (`opencode acp`), Goose (`goose acp`) and others.
+
+A session runs in the runtime asked for (`axel thread new|spawn --runtime managed|pane`),
+else in its agent's default (`axel agent new|edit --runtime managed|pane`; `auto` clears it),
+else managed when the harness's ACP adapter is on PATH and in a pane otherwise. An agent
+whose sessions you want to watch and take over in its own TUI defaults to `pane`, so every
+thread it starts does, without asking each time.
 
 **Claude's adapter is built in** (`axel claude-acp`, `axel-acp/src/claude/`): a Rust port of
 Zed's `claude-code-acp` 0.16.2 that drives the `claude` CLI directly, the way Anthropic's

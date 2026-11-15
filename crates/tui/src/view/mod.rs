@@ -107,6 +107,7 @@ mod tests {
             model: Some("sonnet".into()),
             color: Some(AgentColor::Purple),
             runtime_mode: RuntimeMode::Autopilot,
+            runtime: None,
             last_seen_at: Some(1_000),
             unread: 3,
         }

@@ -1128,6 +1128,7 @@ mod tests {
             model: None,
             color: Some(AgentColor::Blue),
             runtime_mode: RuntimeMode::Autopilot,
+            runtime: None,
             last_seen_at: None,
             unread: 0,
         }

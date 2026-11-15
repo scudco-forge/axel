@@ -170,6 +170,7 @@ pub fn run(params: Params, scope: &CallScope) -> Result<CallToolResult, rmcp::Er
             prompt: params.prompt,
             color,
             runtime_mode,
+            runtime: None,
             auth_tag: Some(tag.to_tag()),
         })
         .map_err(|e| rmcp::ErrorData::internal_error(format!("insert error: {e}"), None))?;

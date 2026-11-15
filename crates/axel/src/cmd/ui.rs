@@ -209,7 +209,7 @@ pub fn run_inline(screen: Option<ScreenArg>, thread: Option<String>) -> Result<(
     let cwd = std::env::current_dir().context("reading current directory")?;
     let send = |session_id: &str, cmd: SendCommand| -> Result<SendReply> { send_to_session(&ctx, session_id, cmd) };
     let summon = |thread_id: &str, agent: &str, text: &str, files: &[std::path::PathBuf]| -> Result<String> { summon(&ctx, thread_id, agent, text, files) };
-    let runtime_label = |h: &axel_store::Harness| launch::runtime_label(h);
+    let runtime_label = |a: &axel_tui::model::AgentRow| launch::runtime_label(&a.harness, a.runtime);
     // From the floating launcher, a thread docks into the window under it:
     // the conversation above, the composer below, and the launcher closes.
     // Elsewhere it opens as its own tab.
@@ -822,7 +822,7 @@ pub fn run_compose(thread_id: &str) -> Result<()> {
     let cwd = std::env::current_dir().context("reading current directory")?;
     let send = |session_id: &str, cmd: SendCommand| -> Result<SendReply> { send_to_session(&ctx, session_id, cmd) };
     let summon = |thread_id: &str, agent: &str, text: &str, files: &[std::path::PathBuf]| -> Result<String> { summon(&ctx, thread_id, agent, text, files) };
-    let runtime_label = |h: &axel_store::Harness| launch::runtime_label(h);
+    let runtime_label = |a: &axel_tui::model::AgentRow| launch::runtime_label(&a.harness, a.runtime);
     let open_controls = |thread_id: &str| {
         if let Some(rex) = &ctx.rex {
             open_controls(rex, thread_id);
@@ -1018,7 +1018,7 @@ pub fn run_answer(thread_id: &str, item_id: &str) -> Result<()> {
     let cwd = std::env::current_dir().context("reading current directory")?;
     let send = |session_id: &str, cmd: SendCommand| -> Result<SendReply> { send_to_session(&ctx, session_id, cmd) };
     let summon = |_: &str, _: &str, _: &str, _: &[std::path::PathBuf]| -> Result<String> { anyhow::bail!("not from here") };
-    let runtime_label = |h: &axel_store::Harness| launch::runtime_label(h);
+    let runtime_label = |a: &axel_tui::model::AgentRow| launch::runtime_label(&a.harness, a.runtime);
     let deps = Deps { store: &ctx.store, keystore: &ctx.keystore, cwd, harnesses: harnesses(), send: &send, summon: &summon, runtime_label: &runtime_label, open_thread: None, focus_peer: None, fit_prompt: None, manage_thread: None, open_controls: None, open_terminal: None };
     let res = axel_tui::run_answer(deps, thread_id, item_id);
     close_own_layer(&ctx);

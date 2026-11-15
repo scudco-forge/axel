@@ -1,4 +1,4 @@
-use axel_store::{AgentColor, Effort, RuntimeMode};
+use axel_store::{AgentColor, Effort, RuntimeMode, SessionRuntime};
 use clap::{Parser, Subcommand, ValueEnum};
 
 /// Axel: agent orchestration, designed for Rex.
@@ -202,6 +202,10 @@ pub enum AgentCommand {
         /// autopilot never asks; edits auto-accepts file edits; supervised asks; plan is read-only.
         #[arg(long, value_enum, default_value_t = RuntimeModeArg::Autopilot)]
         runtime_mode: RuntimeModeArg,
+        /// Start its sessions managed or in a pane unless `--runtime` says
+        /// otherwise (default: auto, managed when the ACP adapter is installed).
+        #[arg(long, value_enum, value_name = "RUNTIME")]
+        runtime: Option<AgentRuntimeArg>,
         /// Run it on this host (see `axel host`) unless told otherwise.
         #[arg(long, value_name = "HOST")]
         host: Option<String>,
@@ -209,8 +213,8 @@ pub enum AgentCommand {
         policy: PolicyArgs,
     },
     /// Change anything about an agent: its name, harness, model, reasoning
-    /// effort, skills, prompt, colour, permissions, budget, runtime mode or
-    /// default host.
+    /// effort, skills, prompt, colour, permissions, budget, runtime mode,
+    /// default runtime or default host.
     Edit {
         name: String,
         /// Switch it to this harness, and optionally model: `codex`, `claude/fable`.
@@ -242,6 +246,9 @@ pub enum AgentCommand {
         color: Option<AgentColorArg>,
         #[arg(long, value_enum)]
         runtime_mode: Option<RuntimeModeArg>,
+        /// Change the runtime its sessions start in (`auto` lets Axel choose again).
+        #[arg(long, value_enum, value_name = "RUNTIME")]
+        runtime: Option<AgentRuntimeArg>,
         /// Run it on this host unless told otherwise; `local` runs it here again.
         #[arg(long, value_name = "HOST|local")]
         host: Option<String>,
@@ -313,7 +320,7 @@ pub enum ThreadCommand {
         /// Record the thread without starting the harness.
         #[arg(long)]
         no_launch: bool,
-        /// managed (default when the ACP adapter is installed) or pane.
+        /// managed or pane (default: the agent's, else managed when the ACP adapter is installed).
         #[arg(long, value_enum)]
         runtime: Option<RuntimeArg>,
         /// Run the agent on this host (default: the agent's own; `local` for here).
@@ -471,6 +478,29 @@ pub enum RuntimeArg {
     Managed,
     /// The harness's own CLI runs in a Rex pane.
     Pane,
+}
+
+/// `agent new|edit --runtime`: the runtime an agent's sessions start in, or
+/// `auto` (alias `default`) for none, letting Axel choose.
+#[derive(Copy, Clone, Debug, ValueEnum, PartialEq, Eq)]
+pub enum AgentRuntimeArg {
+    /// Axel drives the harness over ACP; you work in the thread view.
+    Managed,
+    /// The harness's own CLI runs in a Rex pane.
+    Pane,
+    /// Managed when the harness's ACP adapter is installed, else pane.
+    #[value(alias = "default")]
+    Auto,
+}
+
+impl From<AgentRuntimeArg> for Option<SessionRuntime> {
+    fn from(r: AgentRuntimeArg) -> Self {
+        match r {
+            AgentRuntimeArg::Managed => Some(SessionRuntime::Managed),
+            AgentRuntimeArg::Pane => Some(SessionRuntime::Pane),
+            AgentRuntimeArg::Auto => None,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum, PartialEq, Eq)]

@@ -383,6 +383,7 @@ mod tests {
             prompt: None,
             color: None,
             runtime_mode: Default::default(),
+            runtime: None,
             auth_tag: None,
             created_at: 0,
             last_seen_at: None,

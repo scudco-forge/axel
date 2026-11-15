@@ -53,13 +53,15 @@ speaking ACP runs as a managed session too.
 | `--effort` | How hard its model thinks: `low`, `medium`, `high`, `xhigh` or `max`. See [Reasoning effort](#reasoning-effort). |
 | `--color` | How it shows up in the dashboard and in `@mentions`. |
 | `--runtime-mode` | How much it may do alone; see [Permissions and budgets](/docs/policies). |
+| `--runtime` | Where its sessions run unless a thread asks otherwise: `managed` (the thread view) or `pane` (the harness's own CLI in a Rex pane). Left out, Axel picks managed when the harness's ACP adapter is installed. |
 | `--host` | Where it runs unless told otherwise; see [Remote hosts](/docs/remote-hosts). |
 
 Change any of it later with `axel agent edit terra …`: `axel agent edit terra goose` moves
 terra to Goose, `axel agent edit opus --model fable` changes only the model,
 `axel agent edit terra --name sol` renames it (its key, policy and history stay; sessions
 already running keep the old name until they restart), `--effort high` sets how hard it
-thinks (`--effort default` goes back to the harness's own), and `--skills`, `--prompt` and
+thinks (`--effort default` goes back to the harness's own), `--runtime pane` starts its
+sessions in a pane (`--runtime auto` lets Axel choose again), and `--skills`, `--prompt` and
 `--color` replace those. `axel agent archive terra` retires an agent and keeps its key and
 history.
 

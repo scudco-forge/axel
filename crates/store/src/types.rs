@@ -473,6 +473,9 @@ pub struct Agent {
     pub prompt: Option<String>,
     pub color: Option<AgentColor>,
     pub runtime_mode: RuntimeMode,
+    /// The runtime its sessions start in unless one is asked for; `None`
+    /// lets Axel choose (managed when the harness's ACP adapter is installed).
+    pub runtime: Option<SessionRuntime>,
     pub auth_tag: Option<Vec<String>>,
     pub created_at: i64,
     pub last_seen_at: Option<i64>,
@@ -492,6 +495,9 @@ pub struct NewAgent {
     pub prompt: Option<String>,
     pub color: Option<AgentColor>,
     pub runtime_mode: RuntimeMode,
+    /// The runtime its sessions start in unless one is asked for; `None`
+    /// lets Axel choose.
+    pub runtime: Option<SessionRuntime>,
     pub auth_tag: Option<Vec<String>>,
 }
 

@@ -118,9 +118,10 @@ pub struct Deps<'a> {
     /// Start a new managed session for `agent name` on `thread_id` with an initial
     /// prompt and attachments; returns the new session id.
     pub summon: &'a SummonFn<'a>,
-    /// Human label of the runtime a harness would get, shown on the launcher's
-    /// summary, e.g. `"managed (claude-code-acp)"` or `"pane (claude-code-acp not found on PATH)"`.
-    pub runtime_label: &'a dyn Fn(&axel_store::Harness) -> String,
+    /// Human label of the runtime an agent's session would get, shown on the
+    /// launcher's summary, e.g. `"managed (claude-code-acp)"`,
+    /// `"pane (claude-code-acp not found on PATH)"` or `"pane (the agent's default)"`.
+    pub runtime_label: &'a dyn Fn(&crate::model::AgentRow) -> String,
     /// Open a thread outside this TUI (inside Rex: a stream pane plus a
     /// composer pane).  `None`, or an error, opens the in-TUI thread view.
     pub open_thread: Option<&'a OpenThreadFn<'a>>,
