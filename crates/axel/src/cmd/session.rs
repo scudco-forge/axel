@@ -180,6 +180,9 @@ fn host(session_id: &str) -> Result<()> {
         session_id: session.id.clone(),
         thread_id: thread.id.clone(),
         agent_pubkey: agent.pubkey.clone(),
+        agent_name: agent.name.clone(),
+        // Set on remote jobs, whose Rex pane passes it on to every client.
+        notify: std::env::var_os("AXEL_NOTIFY").is_some(),
         cwd,
         harness: agent.harness.clone(),
         // The session's mode, not the agent's: a summoned session may run narrower.

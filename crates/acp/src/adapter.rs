@@ -11,12 +11,15 @@ use axel_store::Harness;
 /// `cursor-agent acp`, …); a custom command is split like a shell would (quotes
 /// honoured, no expansion).
 pub fn adapter_command(harness: &Harness) -> Vec<String> {
-    if let Ok(v) = std::env::var(env_var_name(harness))
-        && !v.trim().is_empty()
-    {
-        return shell_split(&v);
+    command_with(harness, std::env::var(env_var_name(harness)).ok())
+}
+
+/// [`adapter_command`] given the value of `AXEL_ACP_<HARNESS>`.
+fn command_with(harness: &Harness, env_override: Option<String>) -> Vec<String> {
+    match env_override {
+        Some(v) if !v.trim().is_empty() => shell_split(&v),
+        _ => default_command(harness),
     }
-    default_command(harness)
 }
 
 /// Whether `harness` runs under the adapter inside `axel`: it has one, and
@@ -119,23 +122,25 @@ mod tests {
 
     #[test]
     fn defaults() {
-        let claude = adapter_command(&Harness::Claude);
+        let command = |h: &Harness| command_with(h, None);
+        let claude = command(&Harness::Claude);
         assert_eq!(claude.len(), 2, "{claude:?}");
         assert_eq!(claude[1], "claude-acp", "the built-in adapter: this binary's `claude-acp`");
-        assert_eq!(adapter_command(&Harness::Codex)[1], "codex-acp", "built in");
-        assert_eq!(adapter_command(&Harness::Opencode), vec!["opencode", "acp"]);
-        assert_eq!(adapter_command(&Harness::Goose), vec!["goose", "acp"]);
-        assert_eq!(adapter_command(&Harness::Cursor), vec!["cursor-agent", "acp"]);
-        assert_eq!(adapter_command(&Harness::Pi), vec!["pi-acp"]);
-        assert_eq!(adapter_command(&Harness::Amp), vec!["amp-acp"]);
-        assert_eq!(adapter_command(&Harness::Grok), vec!["grok", "agent", "stdio"]);
+        assert_eq!(command(&Harness::Codex)[1], "codex-acp", "built in");
+        assert_eq!(command(&Harness::Opencode), vec!["opencode", "acp"]);
+        assert_eq!(command(&Harness::Goose), vec!["goose", "acp"]);
+        assert_eq!(command(&Harness::Cursor), vec!["cursor-agent", "acp"]);
+        assert_eq!(command(&Harness::Pi), vec!["pi-acp"]);
+        assert_eq!(command(&Harness::Amp), vec!["amp-acp"]);
+        assert_eq!(command(&Harness::Grok), vec!["grok", "agent", "stdio"]);
         for h in Harness::BUILTIN {
-            assert!(!adapter_command(&h).is_empty(), "{h} has an adapter");
+            assert!(!command(&h).is_empty(), "{h} has an adapter");
         }
         assert_eq!(
-            adapter_command(&Harness::Custom("python my_agent.py --flag".into())),
+            command(&Harness::Custom("python my_agent.py --flag".into())),
             vec!["python", "my_agent.py", "--flag"]
         );
+        assert_eq!(command_with(&Harness::Goose, Some("  ".into())), vec!["goose", "acp"], "a blank override is none");
     }
 
     #[test]
@@ -153,21 +158,11 @@ mod tests {
 
     #[test]
     fn env_override_wins() {
-        // A harness name no other test touches, so the env var is private to this test.
         let h = Harness::Custom("zz-override-test".into());
-        // SAFETY: tests in this crate do not read this variable concurrently.
-        unsafe {
-            std::env::set_var(
-                "AXEL_ACP_ZZ_OVERRIDE_TEST",
-                "npx -y \"@scope/pkg name\" --x",
-            )
-        };
         assert_eq!(
-            adapter_command(&h),
+            command_with(&h, Some("npx -y \"@scope/pkg name\" --x".into())),
             vec!["npx", "-y", "@scope/pkg name", "--x"]
         );
-        unsafe { std::env::remove_var("AXEL_ACP_ZZ_OVERRIDE_TEST") };
-        assert_eq!(adapter_command(&h), vec!["zz-override-test"]);
     }
 
     #[test]

@@ -89,12 +89,17 @@ impl Store {
     /// `$AXEL_DB`, else `$AXEL_HOME/axel.db`, else `~/.axel/axel.db`
     /// (`./.axel/axel.db` if there is no home directory).
     pub fn default_path() -> PathBuf {
-        if let Some(p) = std::env::var_os("AXEL_DB")
+        Store::path_in(std::env::var_os("AXEL_DB"), std::env::var_os("AXEL_HOME"))
+    }
+
+    /// [`Store::default_path`] given `$AXEL_DB` and `$AXEL_HOME`.
+    fn path_in(axel_db: Option<std::ffi::OsString>, axel_home: Option<std::ffi::OsString>) -> PathBuf {
+        if let Some(p) = axel_db
             && !p.is_empty()
         {
             return PathBuf::from(p);
         }
-        if let Some(home) = std::env::var_os("AXEL_HOME")
+        if let Some(home) = axel_home
             && !home.is_empty()
         {
             return PathBuf::from(home).join("axel.db");
