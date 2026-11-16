@@ -787,6 +787,7 @@ mod tests {
                     "label": "axel",
                     "options": {
                         "shell": "none",
+                        "login": false,
                         "command": ["/usr/bin/env", "AXEL_DB=/tmp/a.db", "axel", "ui", "launch"],
                         "cwd": "/work",
                         "exit": {"on_completion": true}
@@ -826,7 +827,7 @@ mod tests {
                 "layout": {"block": {
                     "flavor": "com.superlogical.terminal.shell",
                     "label": "atlas · Ship it",
-                    "options": {"shell": "none", "command": ["claude"], "exit": {"on_completion": true}}
+                    "options": {"shell": "none", "login": false, "command": ["claude"], "exit": {"on_completion": true}}
                 }}
             })
         );
@@ -841,7 +842,7 @@ mod tests {
         let sent: Value = serde_json::from_str(&calls[0][5]).unwrap();
         assert_eq!(
             sent,
-            json!({ "flavor": "com.superlogical.terminal.shell", "label": "atlas · log", "options": { "shell": "none", "command": ["host"], "exit": { "on_completion": true } } })
+            json!({ "flavor": "com.superlogical.terminal.shell", "label": "atlas · log", "options": { "shell": "none", "login": false, "command": ["host"], "exit": { "on_completion": true } } })
         );
     }
 
@@ -873,7 +874,7 @@ mod tests {
         let block = |label: &str, cmd: &str| json!({"block": {
             "flavor": "com.superlogical.terminal.shell",
             "label": label,
-            "options": {"shell": "none", "command": [cmd], "exit": {"on_completion": true}}
+            "options": {"shell": "none", "login": false, "command": [cmd], "exit": {"on_completion": true}}
         }});
         assert_eq!(
             sent,
