@@ -37,6 +37,13 @@ pub struct HostConfig {
     pub session_id: String,
     pub thread_id: String,
     pub agent_pubkey: String,
+    /// The agent's name, for its pane's status title and notifications when
+    /// the store doesn't know the agent.
+    pub agent_name: String,
+    /// Send desktop notifications (OSC 9) to the pane the host runs in: remote
+    /// jobs run in a Rex pane on their host, and Rex shows them on every
+    /// client attached there.
+    pub notify: bool,
     /// The thread's workspace: the adapter's cwd and the ACP session's cwd.
     pub cwd: PathBuf,
     pub harness: Harness,
@@ -606,10 +613,9 @@ impl<W: Write> Host<W> {
     }
 
     /// A desktop notification (OSC 9) for the terminal the host runs in, when
-    /// `$AXEL_NOTIFY` is set: remote jobs run in a Rex pane on their host, and
-    /// Rex shows it on every client attached there.
+    /// [`HostConfig::notify`] asks for one.
     fn notify(&mut self, text: &str) {
-        if std::env::var_os("AXEL_NOTIFY").is_none() {
+        if !self.cfg.notify {
             return;
         }
         let clean: String = text.chars().filter(|c| !c.is_control()).take(200).collect();
@@ -617,14 +623,20 @@ impl<W: Write> Host<W> {
         let _ = self.out.flush();
     }
 
+    /// The agent's name: the store's (it may have been renamed since the
+    /// session started), else the one the host was given.
+    fn agent_name(&self) -> String {
+        match self.store.agent_by_pubkey(&self.cfg.agent_pubkey) {
+            Ok(Some(a)) => a.name,
+            _ => self.cfg.agent_name.clone(),
+        }
+    }
+
     /// Report this session's state to the terminal its pane runs in, as an
     /// OSC 7501 Program Status record (revision 0.4).  Each report replaces the
     /// record whole, so `app` and `title` (the agent's name) go in every one.
     fn program_status(&mut self, state: axel_rex::osc::State, kind: Option<axel_rex::osc::Kind>, msg: &str) {
-        let title = match self.store.agent_by_pubkey(&self.cfg.agent_pubkey) {
-            Ok(Some(a)) => a.name,
-            _ => std::env::var("AXEL_AGENT_NAME").unwrap_or_else(|_| "agent".into()),
-        };
+        let title = self.agent_name();
         let msg = msg.trim();
         let report = axel_rex::osc::Report {
             state,
@@ -1676,7 +1688,7 @@ impl<W: Write> Host<W> {
         if let Err(e) = self.set_state(SessionState::Idle) {
             self.line(RED, "✖", &format!("store: {e}"));
         }
-        let who = std::env::var("AXEL_AGENT_NAME").unwrap_or_else(|_| "agent".into());
+        let who = self.agent_name();
         let head: String = self.turn_assistant_text.lines().find(|l| !l.trim().is_empty()).unwrap_or("").chars().take(120).collect();
         self.notify(&match stop_reason.as_str() {
             "error" => format!("{who} hit an error"),
@@ -2108,7 +2120,7 @@ impl<W: Write> Host<W> {
                     Some(perm_ref),
                     json!({ "title": title, "kind": kind.as_str(), "raw_input": truncate_json(&raw_input, RAW_LIMIT), "options": opts, "multi_select": multiple.map(|(min,max)|json!({"min":min,"max":max})) }),
                 )?;
-                let who = std::env::var("AXEL_AGENT_NAME").unwrap_or_else(|_| "agent".into());
+                let who = self.agent_name();
                 self.notify(&if question { format!("{who} asks: {title}") } else { format!("{who} needs permission: {title}") });
                                 self.state = SessionState::Blocked;
                 self.store.update_session(

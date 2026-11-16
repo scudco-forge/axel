@@ -40,12 +40,12 @@ pub struct RexEnv {
 /// `None` when either required variable is missing or empty, i.e. when not
 /// running inside a Rex terminal.
 pub fn detect() -> Option<RexEnv> {
-    let non_empty = |k: &str| {
-        std::env::var(k)
-            .ok()
-            .map(|v| v.trim().to_string())
-            .filter(|v| !v.is_empty())
-    };
+    detect_from(|k| std::env::var(k).ok())
+}
+
+/// [`detect`] with `var` standing in for the environment.
+fn detect_from(var: impl Fn(&str) -> Option<String>) -> Option<RexEnv> {
+    let non_empty = |k: &str| var(k).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
     Some(RexEnv {
         server: non_empty("REX_SERVER"),
         session: non_empty("REX_SESSION")?,
@@ -673,16 +673,14 @@ mod tests {
         let rex = Rex::new(env());
         assert_eq!(rex.env().session, "session:abc");
         assert_eq!(rex.env().block, "block:def");
-        // detect() needs both REX_SESSION and REX_BLOCK; the test process is
-        // not guaranteed to be inside Rex, so only check consistency.
-        let d = detect();
-        let have = std::env::var("REX_SESSION")
-            .map(|s| !s.is_empty())
-            .unwrap_or(false)
-            && std::env::var("REX_BLOCK")
-                .map(|s| !s.is_empty())
-                .unwrap_or(false);
-        assert_eq!(d.is_some(), have);
+        // detect() needs both REX_SESSION and REX_BLOCK; REX_SERVER is optional.
+        let vars = |set: &'static [(&'static str, &'static str)]| move |k: &str| set.iter().find(|(n, _)| *n == k).map(|(_, v)| v.to_string());
+        assert_eq!(
+            detect_from(vars(&[("REX_SESSION", "session:abc"), ("REX_BLOCK", " block:def ")])),
+            Some(RexEnv { server: None, session: "session:abc".into(), block: "block:def".into() })
+        );
+        assert_eq!(detect_from(vars(&[("REX_SESSION", "session:abc"), ("REX_BLOCK", " ")])), None);
+        assert_eq!(detect_from(vars(&[("REX_BLOCK", "block:def"), ("REX_SERVER", "unix:///tmp/rex.sock")])), None);
     }
 
     #[test]

@@ -329,7 +329,8 @@ usage extension or the prompt reply. Other currencies are not treated as USD.
 // Adapter resolution (overridable by env AXEL_ACP_<HARNESS>=<command line>)
 pub fn adapter_command(harness: &axel_store::Harness) -> Vec<String>;  // claude → [axel, "claude-acp"], codex → [axel, "codex-acp"], custom "goose" → ["goose","acp"], Custom(cmd) → split(cmd)
 
-pub struct HostConfig { pub session_id: String, pub thread_id: String, pub agent_pubkey: String, pub cwd: PathBuf, pub harness: Harness, pub runtime_mode: RuntimeMode, pub disallowed_tools: Vec<String>, pub log_path: PathBuf, pub socket_path: PathBuf, pub env: Vec<(String,String)>, pub initial_prompt: Option<String>, pub resume_native_id: Option<String>, pub effort: Option<axel_store::Effort> }
+pub struct HostConfig { pub session_id: String, pub thread_id: String, pub agent_pubkey: String, pub agent_name: String, pub notify: bool, pub cwd: PathBuf, pub harness: Harness, pub runtime_mode: RuntimeMode, pub disallowed_tools: Vec<String>, pub log_path: PathBuf, pub socket_path: PathBuf, pub env: Vec<(String,String)>, pub initial_prompt: Option<String>, pub resume_native_id: Option<String>, pub effort: Option<axel_store::Effort> }
+//   agent_name: status title / notification name when the store doesn't know the agent; notify: emit OSC 9 notifications (the caller sets it from $AXEL_NOTIFY). The host reads neither from its own environment.
 pub async fn run_host(cfg: HostConfig, store: axel_store::Store, signer: axel_identity::Keypair, out: impl std::io::Write + Send) -> anyhow::Result<()>;
 //   - spawns adapter, initialize (clientCapabilities fs read/write = true, terminal = false), session/new {cwd, mcpServers: []} (or session/load when resume_native_id and agent supports loadSession)
 //   - stores native session id via store.update_session(harness_session_id)

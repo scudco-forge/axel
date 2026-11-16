@@ -74,6 +74,8 @@ fn fixture(mode: RuntimeMode, harness: Harness, initial_prompt: Option<&str>) ->
         session_id: session.id.clone(),
         thread_id: thread.id.clone(),
         agent_pubkey: agent.public().to_base58(),
+        agent_name: "atlas".into(),
+        notify: false,
         cwd,
         harness,
         runtime_mode: mode,
@@ -946,7 +948,7 @@ fn the_host_reports_program_status_to_its_pane_as_osc_7501() {
     assert!(working < done && states.last() == Some(&"state=clear"), "{states:?}");
     // Every report is whole: app and the agent's name as title, every time.
     for r in &reports {
-        assert!(r.contains(":app=axel") && r.contains(&format!(":title={}", b64("agent"))), "{r}");
+        assert!(r.contains(":app=axel") && r.contains(&format!(":title={}", b64("atlas"))), "{r}");
     }
     assert!(reports[working].contains(&format!(":msg={}", b64("fix the login bug"))), "{}", reports[working]);
 }

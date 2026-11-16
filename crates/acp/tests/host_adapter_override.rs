@@ -69,6 +69,8 @@ fn host(harness: Harness, effort: Effort, agent_env: &[(&str, &str)]) -> Hosted 
         session_id: session.id.clone(),
         thread_id: thread.id.clone(),
         agent_pubkey: agent.public().to_base58(),
+        agent_name: "atlas".into(),
+        notify: false,
         cwd,
         harness,
         runtime_mode: RuntimeMode::Autopilot,

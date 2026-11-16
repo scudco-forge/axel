@@ -108,7 +108,12 @@ impl Keystore {
     /// Default fallback file: `$AXEL_HOME/secrets.json`, or
     /// `~/.axel/secrets.json` when `AXEL_HOME` is unset.
     pub fn default_file_path() -> PathBuf {
-        let home = match std::env::var_os(HOME_ENV) {
+        Keystore::file_path_in(std::env::var_os(HOME_ENV))
+    }
+
+    /// [`Keystore::default_file_path`] given `$AXEL_HOME`.
+    fn file_path_in(axel_home: Option<std::ffi::OsString>) -> PathBuf {
+        let home = match axel_home {
             Some(h) if !h.is_empty() => PathBuf::from(h),
             _ => dirs::home_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
@@ -123,8 +128,12 @@ impl Keystore {
     /// - `keychain`: the OS keychain; errors if it cannot be reached.
     /// - unset/empty: the keychain if it answers, otherwise the file.
     pub fn open() -> Result<Keystore, Error> {
-        let path = Keystore::default_file_path();
-        let selector = std::env::var(BACKEND_ENV).unwrap_or_default();
+        Keystore::open_with(std::env::var_os(HOME_ENV), &std::env::var(BACKEND_ENV).unwrap_or_default())
+    }
+
+    /// [`Keystore::open`] given `$AXEL_HOME` and `$AXEL_KEYSTORE`.
+    fn open_with(axel_home: Option<std::ffi::OsString>, selector: &str) -> Result<Keystore, Error> {
+        let path = Keystore::file_path_in(axel_home);
         match selector.trim().to_ascii_lowercase().as_str() {
             // Default is the 0600 file (like ssh keys): the OS keychain re-prompts
             // whenever the binary changes, which is constantly during development.
@@ -560,49 +569,27 @@ mod tests {
 
     #[test]
     fn default_file_path_is_under_home() {
-        // Only valid when AXEL_HOME is not set by the environment running
-        // the tests; the env-driven path is covered by `open_honours_env`.
-        if std::env::var_os(HOME_ENV).is_none() {
-            let p = Keystore::default_file_path();
-            assert!(p.ends_with(Path::new(".axel").join("secrets.json")));
-        }
+        assert!(Keystore::file_path_in(None).ends_with(Path::new(".axel").join("secrets.json")));
+        assert!(Keystore::file_path_in(Some("".into())).ends_with(Path::new(".axel").join("secrets.json")));
     }
 
     /// `AXEL_KEYSTORE=file` + `AXEL_HOME` select the file backend at the given
     /// directory. Never selects the keychain, so safe under `cargo test`.
-    ///
-    /// Runs in a single test (env vars are process-global) and uses
-    /// `unsafe` set/remove as required by edition 2024.
     #[test]
     fn open_honours_env() {
         let dir = tempfile::tempdir().unwrap();
-        // SAFETY: tests in this crate that touch these variables are confined
-        // to this function, and the variables are restored before returning.
-        unsafe {
-            std::env::set_var(HOME_ENV, dir.path());
-            std::env::set_var(BACKEND_ENV, "file");
-        }
-        let result = (|| {
-            let ks = Keystore::open()?;
-            assert_eq!(ks.backend_name(), "file");
-            assert_eq!(ks.file_path().unwrap(), dir.path().join("secrets.json"));
-            ks.owner()?;
-            assert!(dir.path().join("secrets.json").exists());
+        let home = || Some(dir.path().as_os_str().to_owned());
+        let ks = Keystore::open_with(home(), "file").unwrap();
+        assert_eq!(ks.backend_name(), "file");
+        assert_eq!(ks.file_path().unwrap(), dir.path().join("secrets.json"));
+        ks.owner().unwrap();
+        assert!(dir.path().join("secrets.json").exists());
 
-            // Case/whitespace tolerant.
-            unsafe { std::env::set_var(BACKEND_ENV, " FILE ") };
-            assert_eq!(Keystore::open()?.backend_name(), "file");
+        // Case/whitespace tolerant.
+        assert_eq!(Keystore::open_with(home(), " FILE ").unwrap().backend_name(), "file");
 
-            // Unknown value is an error, not a silent keychain probe.
-            unsafe { std::env::set_var(BACKEND_ENV, "cloud") };
-            assert!(matches!(Keystore::open(), Err(Error::InvalidInput(_))));
-            Ok::<(), Error>(())
-        })();
-        unsafe {
-            std::env::remove_var(HOME_ENV);
-            std::env::remove_var(BACKEND_ENV);
-        }
-        result.unwrap();
+        // Unknown value is an error, not a silent keychain probe.
+        assert!(matches!(Keystore::open_with(home(), "cloud"), Err(Error::InvalidInput(_))));
     }
 
     #[test]

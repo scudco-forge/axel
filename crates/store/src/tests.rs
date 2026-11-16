@@ -146,7 +146,14 @@ fn open_on_disk_sets_wal_and_reopens() {
     };
     let s = Store::open(&path).unwrap();
     assert_eq!(s.get_thread(&thread_id).unwrap().unwrap().title, "persist");
-    assert!(Store::default_path().ends_with("axel.db"));
+}
+
+#[test]
+fn the_default_path_is_axel_db_then_axel_home_then_home() {
+    let os = |s: &str| Some(std::ffi::OsString::from(s));
+    assert_eq!(Store::path_in(os("/x/my.db"), os("/h")), std::path::Path::new("/x/my.db"));
+    assert_eq!(Store::path_in(os(""), os("/h")), std::path::Path::new("/h/axel.db"));
+    assert!(Store::path_in(None, os("")).ends_with(".axel/axel.db"));
 }
 
 // --- local-only ---------------------------------------------------------------
