@@ -689,7 +689,7 @@ pub fn system_prompt(agent: &axel_store::Agent, dir: &Path) -> String {
 
 /// Axel's agent context and the first prompt for a pane whose CLI takes them
 /// ([`axel_store::Harness::pane_system_prompt_flag`],
-/// [`axel_store::Harness::pane_takes_prompt`]): the context flag ahead of the
+/// [`axel_store::Harness::pane_prompt_args`]): the context flag ahead of the
 /// other arguments, the prompt last. `prompt` is `None` when resuming.
 fn pane_context(spec: &mut cfg_launch::LaunchSpec, harness: &axel_store::Harness, context: impl FnOnce() -> String, prompt: Option<&str>) {
     if let Some(flag) = harness.pane_system_prompt_flag() {
@@ -697,8 +697,8 @@ fn pane_context(spec: &mut cfg_launch::LaunchSpec, harness: &axel_store::Harness
         args.append(&mut spec.args);
         spec.args = args;
     }
-    if let Some(prompt) = prompt.filter(|p| harness.pane_takes_prompt() && !p.trim().is_empty()) {
-        spec.args.push(prompt.to_string());
+    if let Some(mut args) = prompt.filter(|p| !p.trim().is_empty()).and_then(|p| harness.pane_prompt_args(p)) {
+        spec.args.append(&mut args);
     }
 }
 
@@ -961,7 +961,20 @@ mod tests {
                 "{harness}"
             );
             assert_eq!(launched(harness.clone(), None), ["--thinking", "high", "--append-system-prompt", "you are ferro", "--model", "m"], "{harness}: resuming");
+            // A prompt that reads like a flag is message text after `--`, for both.
+            assert_eq!(
+                launched(harness.clone(), Some("-v is broken")),
+                ["--thinking", "high", "--append-system-prompt", "you are ferro", "--model", "m", "--", "-v is broken"],
+                "{harness}"
+            );
         }
+        // One that reads like a file: omp takes it as text after `--`; pi would
+        // attach it as a file even there, so it gets a leading space instead.
+        assert_eq!(
+            launched(Harness::Omp, Some("@x hi")),
+            ["--thinking", "high", "--append-system-prompt", "you are ferro", "--model", "m", "--", "@x hi"]
+        );
+        assert_eq!(launched(Harness::Pi, Some("@x hi")), ["--thinking", "high", "--append-system-prompt", "you are ferro", "--model", "m", " @x hi"]);
         // A pane with no such flags runs as it was.
         let mut spec = LaunchSpec { program: "maki".into(), args: vec!["acp".into()], env: vec![] };
         super::pane_context(&mut spec, &Harness::Custom("maki acp".into()), || unreachable!(), Some("fix it"));

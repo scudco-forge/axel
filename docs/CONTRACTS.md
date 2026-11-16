@@ -200,7 +200,7 @@ impl Harness {   // reasoning effort, by capability (ADR 0007)
 }
 impl Harness {   // what a pane's CLI takes at launch, by capability
     pub fn pane_system_prompt_flag(&self) -> Option<&'static str>;          // claude, pi and omp: --append-system-prompt, carrying Axel's agent context
-    pub fn pane_takes_prompt(&self) -> bool;                                // claude, codex, pi and omp: the first prompt is the CLI's last positional argument (not when resuming)
+    pub fn pane_prompt_args(&self, prompt: &str) -> Option<Vec<String>>;   // claude, codex, pi and omp: the argv tail that carries the first prompt as the CLI's literal first message (not when resuming). omp: `--` ahead of a prompt starting with `-` or `@`; pi: `--` ahead of one starting with `-`, a leading space on one starting with `@` (pi reads `@x` as a file to attach even after `--`); claude and codex: the prompt as is. None = this pane takes no prompt
 }
 impl Harness {   // status, by capability (ADR 0003, 0007)
     pub fn status_app(&self) -> Option<&'static str>;   // omp: the `app` of the OSC 7501 records its CLI reports by itself, its only status channel (no hooks); a pane session of it follows them (`axel session watch`). None = no such reports
