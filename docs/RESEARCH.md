@@ -86,8 +86,11 @@ The adaptation, proposed milestones and unanswered questions are in
 - A Go SDK path (`go.superlogical.com/rex/sdk/...`) compiled in but not published.
 
 **Blocks.** Only two creators today: `com.superlogical.terminal` (flavor `.shell`,
-options `command[]`, `shell`("none"), `cwd`, `size`, `theme`, `initial_input`,
+options `command[]`, `shell`("none"), `login`, `cwd`, `size`, `theme`, `initial_input`,
 `exit{on_completion}`) and `com.superlogical.onboarding`. No web/markdown block.
+`login` defaults to true even with `shell: "none"`: the command then runs under
+root's `/usr/bin/login`, in its process group, and the block method `process`
+reports `login` as the foreground program. Axel sends `login: false`.
 An undocumented block-plugin system exists (`rex server run --block-dir`). So Axel
 renders as a TUI in a terminal block.
 

@@ -34,6 +34,12 @@ pub fn wrap_env(command: &[String], env: &[(String, String)]) -> Result<Vec<Stri
 
 /// A `{"block": {...}}` layout node running `command` directly (`shell: "none"`)
 /// in a terminal labelled `label`, closing when the program exits.
+///
+/// `login: false`: left out, Rex starts the command under `/usr/bin/login`,
+/// which stays the terminal's foreground program, so Rex reports `login` (as
+/// root, with no working directory) instead of the agent's harness.  Tools that
+/// key on the foreground program, such as rexume's `report`, then never see the
+/// harness.
 pub fn terminal_block(
     label: &str,
     command: &[String],
@@ -51,6 +57,7 @@ pub fn terminal_block(
     }
     let mut options = Map::new();
     options.insert("shell".into(), json!("none"));
+    options.insert("login".into(), json!(false));
     options.insert("command".into(), json!(wrap_env(command, env)?));
     if let Some(cwd) = cwd {
         options.insert("cwd".into(), json!(cwd.to_string_lossy()));
@@ -279,7 +286,7 @@ mod tests {
             json!({"block": {
                 "flavor": "com.superlogical.terminal.shell",
                 "label": "lbl",
-                "options": {"shell": "none", "command": ["axel", "ui"], "cwd": "/w", "exit": {"on_completion": true}}
+                "options": {"shell": "none", "login": false, "command": ["axel", "ui"], "cwd": "/w", "exit": {"on_completion": true}}
             }})
         );
         // No cwd → key omitted (empty cwd would mean $HOME anyway).
@@ -352,6 +359,7 @@ mod tests {
                     "label": "atlas · title",
                     "options": {
                         "shell": "none",
+                        "login": false,
                         "command": ["/usr/bin/env", "AXEL_THREAD=t1", "claude"],
                         "cwd": "/p",
                         "exit": {"on_completion": true}

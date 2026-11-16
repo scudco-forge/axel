@@ -257,7 +257,7 @@ pub struct Rex { env: RexEnv }
 impl Rex {
     pub fn new(env: RexEnv) -> Rex;
     pub fn api_call(&self, method: &str, args: serde_json::Value) -> Result<serde_json::Value, Error>;   // `rex api call -s SESSION METHOD JSON`
-    pub fn new_floating_terminal(&self, label: &str, bounds: [f64; 4], command: &[String], cwd: Option<&Path>, env: &[(String, String)]) -> Result<Layer, Error>;  // session.new_layer, shell "none"; env passed by wrapping with `/usr/bin/env K=V ... cmd`
+    pub fn new_floating_terminal(&self, label: &str, bounds: [f64; 4], command: &[String], cwd: Option<&Path>, env: &[(String, String)]) -> Result<Layer, Error>;  // session.new_layer, shell "none", login false (the program, not /usr/bin/login, is the pane's foreground); env passed by wrapping with `/usr/bin/env K=V ... cmd`
     pub fn close_layer(&self, layer_id: &str) -> Result<(), Error>;
     pub fn new_window(&self, label: &str, command: &[String], cwd: Option<&Path>, env: &[(String, String)], focus: bool) -> Result<Window, Error>;  // session.new_window
     pub fn set_block_label(&self, block_id: &str, label: &str) -> Result<(), Error>;

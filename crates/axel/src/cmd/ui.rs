@@ -586,24 +586,15 @@ pub(super) fn dock_thread(ctx: &Ctx, rex: &axel_rex::Rex, thread_id: &str) -> Re
 
 /// Relaunch a thread's panes on the installed binary: hang up its composers
 /// (each undocks: the shell comes back, its stream and tokens panes close),
-/// then dock the thread again from this floating pane, into that shell when
-/// it is known.  Returns what was done; `Ok(false)` when the thread has no
-/// panes open here.  Docking closes Axel's floating panes, this one included.
+/// then dock the thread again from this floating pane.  Returns what was
+/// done; `Ok(false)` when the thread has no panes open here.  Docking closes
+/// Axel's floating panes, this one included.
 pub(super) fn relaunch_thread_panes(ctx: &Ctx, thread_id: &str) -> Result<bool> {
     let out = std::process::Command::new("ps").args(["-eo", "pid,command"]).output().context("listing processes")?;
     let needle = format!("axel thread compose {thread_id}");
     let mut composers: Vec<i32> = Vec::new();
-    let mut origin: Option<String> = None;
     for line in String::from_utf8_lossy(&out.stdout).lines() {
         if !line.contains(&needle) {
-            continue;
-        }
-        // Rex starts each pane through a login wrapper whose command line
-        // carries the environment: that's where the origin shell is named.
-        if line.contains("/usr/bin/login") {
-            if let Some(o) = line.split_whitespace().find_map(|w| w.strip_prefix(&format!("{ORIGIN_BLOCK_ENV}="))) {
-                origin = Some(o.to_string());
-            }
             continue;
         }
         if let Some(pid) = line.split_whitespace().next().and_then(|p| p.parse::<i32>().ok()) {
@@ -623,10 +614,6 @@ pub(super) fn relaunch_thread_panes(ctx: &Ctx, thread_id: &str) -> Result<bool> 
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
     let Some(rex) = &ctx.rex else { return Ok(true) };
-    if let Some(o) = origin {
-        // SAFETY: single-threaded here; `reusable_origin` reads it right after.
-        unsafe { std::env::set_var(ORIGIN_BLOCK_ENV, o) };
-    }
     std::thread::sleep(std::time::Duration::from_millis(300));
     dock_thread(ctx, rex, thread_id)?;
     Ok(true)

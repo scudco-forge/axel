@@ -346,6 +346,11 @@ pub fn launch(ctx: &Ctx, req: LaunchRequest, opts: LaunchOptions) -> Result<Laun
     if let Ok(path) = std::env::var("PATH") {
         spec.env.push(("PATH".into(), path));
     }
+    // Nor the startup files that usually export REX_SERVER; programs in the
+    // pane reach Rex through it (rexume's `report` fails without it).
+    if let Ok(server) = std::env::var("REX_SERVER") {
+        spec.env.push(("REX_SERVER".into(), server));
+    }
     if runtime == SessionRuntime::Pane {
         // The agent's reasoning effort, by the harness's own flag (a managed
         // session's host applies it instead; see `axel session host`).
